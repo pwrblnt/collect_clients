@@ -7,7 +7,6 @@ import datetime
 import locale
 import pytz
 
-# Установка русской локали
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 logging.basicConfig(level=logging.INFO)
 
