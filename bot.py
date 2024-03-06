@@ -108,7 +108,7 @@ class MyBot:
                 for time in times:
                     response += f" - {time}\n"
         else:
-            response = "У вас нет записанных..."
+            response = "У вас нет записей..."
 
         await message.reply(response)
 
@@ -357,12 +357,7 @@ class MyBot:
             elif call.data == 'deltas_':
                 # Удаляем выбранные записи из БД
                 selected_date_obj = datetime.datetime.strptime(self.selected_date.split('_')[1], '%Y-%m-%d')
-                async with self.pool.acquire() as conn:
-                    async with conn.cursor() as cursor:
-                        for hour_str in self.selected_hours:
-                            await cursor.execute(
-                                "DELETE FROM user_schedule WHERE user_id = %s AND selected_date = %s AND selected_time = %s",
-                                (call.from_user.id, selected_date_obj, hour_str))
+                await self.delete_selected_schedule_from_db(call.from_user.id, selected_date_obj, self.selected_hours)
                 keyboard = types.InlineKeyboardMarkup()
                 self.selected_hours = []
                 url_button1 = types.InlineKeyboardButton(text="Добавить запись", callback_data='a')
@@ -372,11 +367,7 @@ class MyBot:
                 await call.message.edit_text("Выбранные записи удалены", reply_markup=keyboard)
             elif call.data == 'del_all':
                 # Удаляем все выбранные записи из БД
-                async with self.pool.acquire() as conn:
-                    async with conn.cursor() as cursor:
-                        await cursor.execute(
-                                "DELETE FROM user_schedule WHERE user_id = %s",
-                                (call.from_user.id,))
+                await self.delete_all_schedule_from_db(call.from_user.id)
                 keyboard = types.InlineKeyboardMarkup()
                 self.selected_hours = []
                 url_button1 = types.InlineKeyboardButton(text="Добавить запись", callback_data='a')
@@ -387,6 +378,20 @@ class MyBot:
                 pass
             else:
                 await log('No call')
+
+    async def delete_all_schedule_from_db(self, user_id):
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    "DELETE FROM user_schedule WHERE user_id = %s",
+                    (user_id,))
+
+    async def delete_selected_schedule_from_db(self, user_id, selected_date_for_del, hour_selected):
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    "DELETE FROM user_schedule WHERE user_id = %s AND selected_date = %s AND selected_time IN %s",
+                    (user_id, selected_date_for_del, tuple(hour_selected)))
 
     async def start_bot(self):
         self.dp.register_message_handler(self.handle_contact, content_types=types.ContentType.CONTACT)
