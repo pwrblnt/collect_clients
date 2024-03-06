@@ -218,12 +218,14 @@ class MyBot:
         keyboard = types.InlineKeyboardMarkup()
         row = []
         now_date = datetime.datetime.now().date()
-        if selected_date.date() != now_date:
-            available_hours = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]  # Доступные часы
-        else:
+        available_hours = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]  # Доступные часы
+
+        if selected_date.date() == now_date:
             moscow_timezone = pytz.timezone('Europe/Moscow')
             current_hour = datetime.datetime.now(moscow_timezone).hour + 1  # Текущий час
-            # Определяем доступные часы исходя из текущего времени
+            if current_hour not in available_hours:
+                current_hour = 10
+                # Определяем доступные часы исходя из текущего времени
             available_hours = [hour for hour in range(current_hour, 22) if
                                not await self.is_hour_busy(selected_date, hour)]
 
@@ -234,7 +236,7 @@ class MyBot:
                 continue
 
             if selected_hours and hour in selected_hours:
-                text = f"🌫 {hour:02d}:00" #✅
+                text = f"🌫 {hour:02d}:00"  #✅
             else:
                 text = f"{hour:02d}:00"
             row.append(types.InlineKeyboardButton(text=text, callback_data=callback_data))
@@ -283,12 +285,10 @@ class MyBot:
                 self.selected_hours = []
             elif call.data == 'next_week':
                 keyboard = await self.generate_next_week_keyboard(datetime.date.today())
-                if call.message.reply_markup != keyboard:
-                    await call.message.edit_reply_markup(reply_markup=keyboard)
+                await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data == 'previous_week':
                 keyboard = await self.generate_previous_week_keyboard(datetime.date.today())
-                if call.message.reply_markup != keyboard:
-                    await call.message.edit_reply_markup(reply_markup=keyboard)
+                await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data.startswith('date_'):
                 self.selected_date = call.data
                 selected_date_str = call.data.split('_')[1]
@@ -305,8 +305,7 @@ class MyBot:
                 else:
                     self.selected_hours.append(selected_time)
                 keyboard = await self.generate_time_keyboard(self.selected_hours, selected_date=selected_date_obj)
-                if call.message.reply_markup != keyboard:
-                    await call.message.edit_reply_markup(reply_markup=keyboard)
+                await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data == 'ok':
                 selected_date_obj = datetime.datetime.strptime(self.selected_date.split('_')[1], '%Y-%m-%d')
                 query = "INSERT INTO user_schedule (user_id, selected_date, selected_time) VALUES (%s, %s, %s)"
@@ -352,8 +351,7 @@ class MyBot:
                 else:
                     self.selected_hours.append(selected_time)
                 keyboard = await self.generate_time_keyboard_from_db(self.selected_hours, selected_date=selected_date_obj)
-                if call.message.reply_markup != keyboard:
-                    await call.message.edit_reply_markup(reply_markup=keyboard)
+                await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data == 'deltas_':
                 # Удаляем выбранные записи из БД
                 selected_date_obj = datetime.datetime.strptime(self.selected_date.split('_')[1], '%Y-%m-%d')
