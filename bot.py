@@ -6,9 +6,13 @@ from config import DB_CONFIG, BOT_TOKEN
 import datetime
 import locale
 import pytz
+import os
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
-logging.basicConfig(level=logging.INFO)
+log_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bot_collect_clients.log')
+logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 
 async def log(message, answer):
@@ -29,8 +33,10 @@ class MyBot:
         self.dp = Dispatcher(self.bot)
         self.loop = asyncio.get_event_loop()
         self.pool = None  # Инициализация пула в конструкторе
-        self.selected_date = datetime.date.today()
+        self.selected_date = ""
         self.selected_hours = []
+        self.selected_date_for_del = ""
+        self.selected_hours_for_del = []
 
     async def create_pool(self):
         # Создание пула соединений с базой данных
@@ -183,7 +189,8 @@ class MyBot:
                 available_hours = {row[0] for row in await cursor.fetchall()}
                 return sorted(available_hours)
 
-    async def generate_calendar_keyboard(self, start_date, sign):
+    @staticmethod
+    async def generate_calendar_keyboard(start_date, sign):
         keyboard = types.InlineKeyboardMarkup()
         row = []
         for i in range(28):
@@ -292,16 +299,14 @@ class MyBot:
                 keyboard = await self.generate_previous_week_keyboard(datetime.date.today())
                 await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data.startswith('date_'):
-                self.selected_date = call.data
-                selected_date_str = call.data.split('_')[1]
-                selected_date_obj = datetime.datetime.strptime(selected_date_str, '%Y-%m-%d')
+                self.selected_date = call.data.split('_')[1]
+                selected_date_obj = datetime.datetime.strptime(self.selected_date, '%Y-%m-%d')
                 formatted_selected_date = selected_date_obj.strftime('%d.%m.%Y')
                 keyboard = await self.generate_time_keyboard(selected_date=selected_date_obj)
                 await call.message.edit_text(formatted_selected_date + ', выберите время:', reply_markup=keyboard)
             elif call.data.startswith('time_'):
                 selected_time = int(call.data.split('_')[1])
-                selected_date_str = self.selected_date.split('_')[1]
-                selected_date_obj = datetime.datetime.strptime(selected_date_str, '%Y-%m-%d')
+                selected_date_obj = datetime.datetime.strptime(self.selected_date, '%Y-%m-%d')
                 if selected_time in self.selected_hours:
                     self.selected_hours.remove(selected_time)
                 else:
@@ -309,22 +314,15 @@ class MyBot:
                 keyboard = await self.generate_time_keyboard(self.selected_hours, selected_date=selected_date_obj)
                 await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data == 'ok':
-                selected_date_obj = datetime.datetime.strptime(self.selected_date.split('_')[1], '%Y-%m-%d')
-                query = "INSERT INTO user_schedule (user_id, selected_date, selected_time) VALUES (%s, %s, %s)"
-                async with self.pool.acquire() as conn:
-                    async with conn.cursor() as cursor:
-                        for hour_str in self.selected_hours:
-                            await cursor.execute(query, (call.from_user.id, selected_date_obj, hour_str))
-                selected_date_str = self.selected_date.split('_')[1]
-                selected_date_obj = datetime.datetime.strptime(selected_date_str, '%Y-%m-%d')
+                # Сохраняем выбранную дату и время в БД
+                selected_date_obj = datetime.datetime.strptime(self.selected_date, '%Y-%m-%d')
+                await self.insert_selected_schedule_in_db(call.from_user.id, selected_date_obj, self.selected_hours)
                 formatted_selected_date = selected_date_obj.strftime('%d.%m.%Y')
-
-                # Преобразуем список часов в строку времени
                 selected_hours_str = ', '.join([f"{hour:02d}:00" for hour in self.selected_hours])
-
                 # Обновляем клавиатуру
                 keyboard = types.InlineKeyboardMarkup()
                 self.selected_hours = []
+                self.selected_date = ""
                 url_button1 = types.InlineKeyboardButton(text="Добавить запись", callback_data='a')
                 url_button2 = types.InlineKeyboardButton(text="Удалить запись", callback_data='del')
                 keyboard.add(url_button1)
@@ -332,44 +330,48 @@ class MyBot:
                 await call.message.edit_text(f"Вы записаны на - {formatted_selected_date} в {selected_hours_str}",
                                              reply_markup=keyboard)
             elif call.data == 'del':
+                # Вывод клавиатуры с датами для удаления
                 user_id_get = call.from_user.id
                 keyboard = await self.generate_user_dates_keyboard(user_id_get)
                 await call.message.edit_text("Выберите дату для удаления:", reply_markup=keyboard)
-                self.selected_hours = []
+                self.selected_hours_for_del = []
             elif call.data.startswith('dated_'):
-                self.selected_date = call.data
-                selected_date_str = call.data.split('_')[1]
-                selected_date_obj = datetime.datetime.strptime(selected_date_str, '%Y-%m-%d')
+                # Выбираем дату для удаления
+                self.selected_date_for_del = call.data.split('_')[1]
+                selected_date_obj = datetime.datetime.strptime(self.selected_date_for_del, '%Y-%m-%d')
                 formatted_selected_date = selected_date_obj.strftime('%d.%m.%Y')
-                keyboard = await self.generate_time_keyboard_from_db(selected_date=selected_date_obj)
+                keyboard = await self.generate_time_keyboard_from_db(selected_date=self.selected_date_for_del)
                 await call.message.edit_text(formatted_selected_date + ', выберите время:', reply_markup=keyboard)
             elif call.data.startswith('untimed_'):
+                # Выбираем часы для удаления
                 selected_time = int(call.data.split('_')[1])
-                selected_date_str = self.selected_date.split('_')[1]
-                selected_date_obj = datetime.datetime.strptime(selected_date_str, '%Y-%m-%d')
-                print('find', selected_time, self.selected_hours)
-                if selected_time in self.selected_hours:
-                    self.selected_hours.remove(selected_time)
+                logging.info(
+                    "find_selected_time_and_selected_hours: {}, {}".format(self.selected_hours_for_del, selected_time))
+                if selected_time in self.selected_hours_for_del:
+                    self.selected_hours_for_del.remove(selected_time)
                 else:
-                    self.selected_hours.append(selected_time)
-                keyboard = await self.generate_time_keyboard_from_db(self.selected_hours, selected_date=selected_date_obj)
+                    self.selected_hours_for_del.append(selected_time)
+                keyboard = await self.generate_time_keyboard_from_db(self.selected_hours_for_del,
+                                                                     selected_date=self.selected_date_for_del)
                 await call.message.edit_reply_markup(reply_markup=keyboard)
             elif call.data == 'deltas_':
                 # Удаляем выбранные записи из БД
-                selected_date_obj = datetime.datetime.strptime(self.selected_date.split('_')[1], '%Y-%m-%d')
-                await self.delete_selected_schedule_from_db(call.from_user.id, selected_date_obj, self.selected_hours)
+                await self.delete_selected_schedule_from_db(call.from_user.id, self.selected_date_for_del,
+                                                            self.selected_hours_for_del)
                 keyboard = types.InlineKeyboardMarkup()
-                self.selected_hours = []
+                self.selected_hours_for_del = []
+                self.selected_date_for_del = ""
                 url_button1 = types.InlineKeyboardButton(text="Добавить запись", callback_data='a')
                 url_button2 = types.InlineKeyboardButton(text="Удалить запись", callback_data='del')
                 keyboard.add(url_button1)
                 keyboard.add(url_button2)
                 await call.message.edit_text("Выбранные записи удалены", reply_markup=keyboard)
             elif call.data == 'del_all':
-                # Удаляем все выбранные записи из БД
+                # Удаляем все записи из БД
                 await self.delete_all_schedule_from_db(call.from_user.id)
                 keyboard = types.InlineKeyboardMarkup()
-                self.selected_hours = []
+                self.selected_hours_for_del = []
+                self.selected_date_for_del = ""
                 url_button1 = types.InlineKeyboardButton(text="Добавить запись", callback_data='a')
                 url_button2 = types.InlineKeyboardButton(text="Удалить запись", callback_data='del')
                 keyboard.add(url_button1)
@@ -377,7 +379,7 @@ class MyBot:
                 await call.message.edit_text("Все записи удалены", reply_markup=keyboard)
                 pass
             else:
-                await log('No call')
+                await log(call.message, "No interesting")
 
     async def delete_all_schedule_from_db(self, user_id):
         async with self.pool.acquire() as conn:
@@ -393,10 +395,19 @@ class MyBot:
                     "DELETE FROM user_schedule WHERE user_id = %s AND selected_date = %s AND selected_time IN %s",
                     (user_id, selected_date_for_del, tuple(hour_selected)))
 
+    async def insert_selected_schedule_in_db(self, user_id, selected_date_for_del, hour_selected):
+        async with self.pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                for hour in hour_selected:
+                    await cursor.execute(
+                        "INSERT INTO user_schedule (user_id, selected_date, selected_time) VALUES (%s, %s, %s)",
+                        (user_id, selected_date_for_del, hour))
+
     async def start_bot(self):
         self.dp.register_message_handler(self.handle_contact, content_types=types.ContentType.CONTACT)
         self.dp.register_message_handler(self.handle_start, commands=['start'])
         self.dp.register_message_handler(self.handle_my_timing, commands=['timing'])
+
         self.dp.register_callback_query_handler(self.handle_callback)
         await self.bot.delete_webhook()
         await self.dp.start_polling()
