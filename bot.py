@@ -241,7 +241,7 @@ class MyBot:
 
             callback_data = f"time_{hour:02d}"
             if selected_hours and hour in selected_hours:
-                text = f"🏁 {hour:02d}:00"  # ✅
+                text = f"🏁 {hour:02d}:00"
             else:
                 text = f"{hour:02d}:00"
             row.append(types.InlineKeyboardButton(text=text, callback_data=callback_data))
