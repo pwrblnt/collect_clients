@@ -284,7 +284,7 @@ class MyBot:
                 url_button2 = types.InlineKeyboardButton(text="Удалить запись", callback_data='del')
                 keyboard.add(url_button1)
                 keyboard.add(url_button2)
-                await call.message.edit_text("У тебя есть возможность записаться по кайфу", reply_markup=keyboard)
+                await call.message.edit_text("У тебя есть возможность..", reply_markup=keyboard)
             elif call.data == 'a':
                 keyboard = await self.generate_calendar_keyboard(datetime.date.today(), 'current')
                 await call.message.edit_text("Выберите дату:", reply_markup=keyboard)
