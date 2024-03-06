@@ -155,23 +155,23 @@ class MyBot:
         row = []
         # Получаем доступные часы из БД для выбранной даты
         available_hours = await self.get_available_hours_from_db(selected_date)
+
         for hour in available_hours:
             callback_data = f"untimed_{hour}"
-            text = f"{hour:02d}:00"
-            # Если час уже выбран, делаем чек-бокс активным
-            if selected_hours and hour in selected_hours:
-                text = f"🔥 {text}"
-            else:
-                text = f"{hour:02d}:00"
+            text = f"{'🔥 ' if selected_hours and hour in selected_hours else ''}{hour:02d}:00"
             row.append(types.InlineKeyboardButton(text=text, callback_data=callback_data))
+
             if len(row) == 3:  # Вставляем новый ряд после каждых 3 кнопок
                 keyboard.row(*row)
                 row = []
+
         if row:  # Добавляем оставшиеся кнопки в последний ряд
             keyboard.row(*row)
+
         # Если есть выбранные часы, добавляем кнопку "Удалить"
         if selected_hours:
             keyboard.row(types.InlineKeyboardButton(text="Удалить", callback_data="deltas_"))
+
         keyboard.row(types.InlineKeyboardButton(text="« Выбор даты", callback_data="del"))
         return keyboard
 
@@ -180,27 +180,23 @@ class MyBot:
             async with conn.cursor() as cursor:
                 await cursor.execute("SELECT DISTINCT selected_time FROM user_schedule WHERE selected_date = %s",
                                      (selected_date,))
-                available_hours = [row[0] for row in await cursor.fetchall()]
-                return available_hours
+                available_hours = {row[0] for row in await cursor.fetchall()}
+                return sorted(available_hours)
 
     async def generate_calendar_keyboard(self, start_date, sign):
         keyboard = types.InlineKeyboardMarkup()
-        buttons_added = 0
         row = []
         for i in range(28):
             current_date = start_date + datetime.timedelta(days=i)
             callback_data = f"date_{current_date}"
             row.append(types.InlineKeyboardButton(text=current_date.strftime('%d.%m %a'), callback_data=callback_data))
-            buttons_added += 1
-            if buttons_added % 4 == 0:  # Insert a new row after every fourth button
+            if len(row) == 4:  # Insert a new row after every fourth button
                 keyboard.row(*row)
                 row = []  # Reset the row for the next set of buttons
         if row:  # Add the remaining buttons in the last row
             keyboard.row(*row)
         if sign == 'next':
             keyboard.row(types.InlineKeyboardButton(text=" « ", callback_data="previous_week"))
-        elif sign == 'previous':
-            keyboard.row(types.InlineKeyboardButton(text=" » ", callback_data="next_week"))
         else:
             keyboard.row(types.InlineKeyboardButton(text=" » ", callback_data="next_week"))
         keyboard.row(types.InlineKeyboardButton(text="« Назад", callback_data="start"))
@@ -226,39 +222,45 @@ class MyBot:
             if current_hour not in available_hours:
                 current_hour = 10
                 # Определяем доступные часы исходя из текущего времени
-            available_hours = [hour for hour in range(current_hour, 22) if
-                               not await self.is_hour_busy(selected_date, hour)]
+            available_hours = [hour for hour in range(current_hour, 22)]
+
+        busy_hours = set()
+        if selected_date:
+            busy_hours = await self.get_busy_hours(selected_date)
 
         for hour in available_hours:
-            callback_data = f"time_{hour:02d}"
-            # Проверяем, занят ли час для выбранной даты
-            if selected_date and await self.is_hour_busy(selected_date, hour):
+            if hour in busy_hours:
                 continue
 
+            callback_data = f"time_{hour:02d}"
             if selected_hours and hour in selected_hours:
-                text = f"🌫 {hour:02d}:00"  #✅
+                text = f"🏁 {hour:02d}:00"  # ✅
             else:
                 text = f"{hour:02d}:00"
             row.append(types.InlineKeyboardButton(text=text, callback_data=callback_data))
-            if len(row) == 3:  # Вставляем новый ряд после каждых 3 кнопок
+
+            if len(row) == 3:
                 keyboard.row(*row)
                 row = []
 
-        if row:  # Добавляем оставшиеся кнопки в последний ряд
+        if row:
             keyboard.row(*row)
+
         if selected_hours:
-            # Если есть хотя бы один выбранный час, добавляем кнопку "Сохранить"
             keyboard.row(types.InlineKeyboardButton(text="Сохранить", callback_data="ok"))
+
         keyboard.row(types.InlineKeyboardButton(text="« Выбор даты", callback_data="aa"))
+
         return keyboard
 
-    async def is_hour_busy(self, selected_date, hour):
+    async def get_busy_hours(self, selected_date):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute("SELECT selected_time FROM user_schedule WHERE selected_date = %s", (selected_date,))
+                await cursor.execute("SELECT selected_time FROM user_schedule WHERE selected_date = %s",
+                                     (selected_date,))
                 busy_hours = await cursor.fetchall()
                 busy_hours_flat = [item for sublist in busy_hours for item in sublist]
-                return hour in busy_hours_flat
+                return set(busy_hours_flat)
 
     async def handle_callback(self, call: types.CallbackQuery):
         if call.message:
