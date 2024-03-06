@@ -9,9 +9,9 @@ import pytz
 import os
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
-log_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bot_collect_clients.log')
-logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#log_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bot_collect_clients.log')
+#logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 
