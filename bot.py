@@ -9,10 +9,9 @@ import pytz
 import os
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
-#log_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bot_collect_clients.log')
-#logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+log_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bot_collect_clients.log')
+logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 async def log(message, answer):
@@ -222,15 +221,11 @@ class MyBot:
         row = []
         now_date = datetime.datetime.now().date()
         available_hours = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]  # Доступные часы
-
-        if selected_date.date() == now_date:
+        if selected_date.date() == now_date:  # Определяем доступные часы исходя из текущего времени
             moscow_timezone = pytz.timezone('Europe/Moscow')
             current_hour = datetime.datetime.now(moscow_timezone).hour + 1  # Текущий час
-            if current_hour not in available_hours:
-                current_hour = 10
-                # Определяем доступные часы исходя из текущего времени
+            current_hour = max(min(current_hour, 22), 10)  # Ограничиваем текущий час от 10 до 22
             available_hours = [hour for hour in range(current_hour, 22)]
-
         busy_hours = set()
         if selected_date:
             busy_hours = await self.get_busy_hours(selected_date)
