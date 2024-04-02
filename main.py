@@ -1,7 +1,7 @@
 import asyncio
 from utils.config import BOT_TOKEN
 from bot.database import DatabaseManager
-from bot.bot import MyBot
+from bot.bot_highlights import MyBot
 from utils.logger import Logger
 
 
