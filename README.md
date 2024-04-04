@@ -1,1 +1,1 @@
-Bot for registering users with further registration for services..
+This bot serves as a tool for user registration and management, as well as branch scheduling. Users can register, store their data, sign up for branches, and edit their registrations. The bot provides a convenient interface for interacting with the system and efficient management of user and branch data.
